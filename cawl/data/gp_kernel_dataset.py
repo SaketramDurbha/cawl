@@ -161,49 +161,4 @@ class GPKernelShipClassificationDataset(Dataset):
 
     def __getitem__(self, idx):
         mmsi, kernel_params, group_id = self.data[idx]
-
-        # If scalers are provided, unscale all kernel parameters
-        if self.scalers_by_mmsi is not None and mmsi in self.scalers_by_mmsi:
-            scaler_dict = self.scalers_by_mmsi[mmsi]
-            param_names = self.get_parameter_names()
-            kernel_params_unscaled = []
-
-            for i, param_name in enumerate(param_names):
-                param_value = kernel_params[
-                    i
-                ].item()  # GPKernelShipClassificationNetworkkernel params
-
-                # Apply appropriate unscaling based on parameter type
-                if "lengthscale" in param_name and "time_scaler" in scaler_dict:
-                    # Time-related parameters
-                    time_scaler = scaler_dict["time_scaler"]
-                    unscaled_value = param_value * time_scaler.scale_[0]
-                elif "variance" in param_name and "state_scaler" in scaler_dict:
-                    # Variance parameters
-                    state_scaler = scaler_dict["state_scaler"]
-                    unscaled_value = param_value * (state_scaler.scale_[0] ** 2)
-                elif (
-                    any(x in param_name for x in ["std", "mean", "min", "max"])
-                    and "state_scaler" in scaler_dict
-                ):
-                    # Statistical parameters from state
-                    state_scaler = scaler_dict["state_scaler"]
-                    unscaled_value = param_value * state_scaler.scale_[0]
-                else:
-                    # Default: no unscaling for parameters we don't know how to unscale
-                    unscaled_value = param_value
-
-                kernel_params_unscaled.append(unscaled_value)
-
-            # Convert back to tensor
-            kernel_params_unscaled = torch.tensor(
-                kernel_params_unscaled,
-                dtype=kernel_params.dtype,
-                device=kernel_params.device,
-            )
-        else:
-            kernel_params_unscaled = kernel_params
-
-        return mmsi, kernel_params_unscaled.to(self.device), group_id
-
         return mmsi, kernel_params, group_id
