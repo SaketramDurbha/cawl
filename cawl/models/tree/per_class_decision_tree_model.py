@@ -398,6 +398,150 @@ class PerClassDecisionTreeModel:
 
         return results
 
+    def calculate_individual_tree_accuracies(
+        self, X_test: np.ndarray, y_test: np.ndarray
+    ) -> Dict[int, List[Dict]]:
+        """
+        Calculate the accuracy of each individual tree when it's not abstaining.
+
+        Args:
+            X_test: Test features
+            y_test: Test labels
+
+        Returns:
+            Dictionary mapping class_id to list of tree results, where each tree result contains:
+            - tree_idx: Index of the tree within its class
+            - accuracy: Accuracy when not abstaining (0.0 if always abstaining)
+            - coverage: Fraction of samples where tree made a prediction (didn't abstain)
+            - n_predictions: Number of samples where tree made a prediction
+            - n_correct: Number of correct predictions
+            - n_abstained: Number of samples where tree abstained
+        """
+        tree_accuracies: Dict[int, List[Dict]] = {}
+        for class_id in self.classes:
+            tree_accuracies[class_id] = []
+
+            for tree_idx in range(len(self.trees_per_class[class_id])):
+                # Get predictions from this specific tree
+                predictions, confidences = self.predict_single_tree(
+                    X_test, class_id, tree_idx
+                )
+
+                # Create binary labels for one-vs-rest evaluation using y_test
+                binary_labels = np.zeros(len(y_test), dtype=int)
+                binary_labels[y_test == class_id] = 1
+
+                # Find samples where tree made a prediction (didn't abstain)
+                non_abstained_mask = predictions != -1
+                n_predictions = np.sum(non_abstained_mask)
+                n_abstained = np.sum(~non_abstained_mask)
+
+                if n_predictions > 0:
+                    # Calculate accuracy for non-abstained predictions
+                    tree_predictions = predictions[non_abstained_mask]
+                    true_labels = binary_labels[non_abstained_mask]
+
+                    # For one-vs-rest: tree predicts 1 for target class, 0 for others
+                    # We want to check if tree correctly identified target class samples
+                    n_correct = np.sum(tree_predictions == true_labels)
+                    accuracy = n_correct / n_predictions
+                else:
+                    # Tree always abstained
+                    accuracy = 0.0
+                    n_correct = 0
+
+                coverage = n_predictions / len(X_test)
+
+                tree_result = {
+                    "tree_idx": tree_idx,
+                    "accuracy": accuracy,
+                    "coverage": coverage,
+                    "n_predictions": n_predictions,
+                    "n_correct": n_correct,
+                    "n_abstained": n_abstained,
+                }
+
+                tree_accuracies[class_id].append(tree_result)
+
+        return tree_accuracies
+
+    def get_tree_accuracy_summary(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
+        """
+        Get summary statistics of individual tree accuracies.
+
+        Args:
+            X_test: Test features
+            y_test: Test labels
+
+        Returns:
+            Dictionary with summary statistics including:
+            - overall_stats: Average accuracy, coverage across all trees
+            - per_class_stats: Statistics per class
+            - best_trees: Best performing trees per class
+            - worst_trees: Worst performing trees per class
+        """
+        tree_accuracies = self.calculate_individual_tree_accuracies(X_test, y_test)
+
+        # Collect all accuracies and coverages
+        all_accuracies = []
+        all_coverages = []
+        per_class_stats = {}
+        best_trees = {}
+        worst_trees = {}
+
+        for class_id in self.classes:
+            class_accuracies = [tree["accuracy"] for tree in tree_accuracies[class_id]]
+            class_coverages = [tree["coverage"] for tree in tree_accuracies[class_id]]
+
+            all_accuracies.extend(class_accuracies)
+            all_coverages.extend(class_coverages)
+
+            # Per-class statistics
+            per_class_stats[class_id] = {
+                "avg_accuracy": np.mean(class_accuracies),
+                "std_accuracy": np.std(class_accuracies),
+                "avg_coverage": np.mean(class_coverages),
+                "std_coverage": np.std(class_coverages),
+                "min_accuracy": np.min(class_accuracies),
+                "max_accuracy": np.max(class_accuracies),
+                "n_trees": len(class_accuracies),
+            }
+
+            # Find best and worst trees for this class
+            best_idx = np.argmax(class_accuracies)
+            worst_idx = np.argmin(class_accuracies)
+
+            best_trees[class_id] = {
+                "tree_idx": tree_accuracies[class_id][best_idx]["tree_idx"],
+                "accuracy": class_accuracies[best_idx],
+                "coverage": class_coverages[best_idx],
+            }
+
+            worst_trees[class_id] = {
+                "tree_idx": tree_accuracies[class_id][worst_idx]["tree_idx"],
+                "accuracy": class_accuracies[worst_idx],
+                "coverage": class_coverages[worst_idx],
+            }
+
+        # Overall statistics
+        overall_stats = {
+            "avg_accuracy": np.mean(all_accuracies),
+            "std_accuracy": np.std(all_accuracies),
+            "avg_coverage": np.mean(all_coverages),
+            "std_coverage": np.std(all_coverages),
+            "min_accuracy": np.min(all_accuracies),
+            "max_accuracy": np.max(all_accuracies),
+            "total_trees": len(all_accuracies),
+        }
+
+        return {
+            "overall_stats": overall_stats,
+            "per_class_stats": per_class_stats,
+            "best_trees": best_trees,
+            "worst_trees": worst_trees,
+            "detailed_results": tree_accuracies,
+        }
+
     def get_tree_statistics(self) -> Dict:
         """Get statistics about the trained trees."""
         all_depths = []
@@ -509,3 +653,93 @@ class PerClassDecisionTreeModel:
         plt.show()
 
         return class_coverage, class_accuracy
+
+    def plot_individual_tree_accuracies(
+        self,
+        X_test: np.ndarray,
+        y_test: np.ndarray,
+        figsize: Tuple[int, int] = (15, 10),
+    ):
+        """
+        Plot individual tree accuracies and coverages.
+
+        Args:
+            X_test: Test features
+            y_test: Test labels
+            figsize: Figure size for the plot
+        """
+        tree_accuracies = self.calculate_individual_tree_accuracies(X_test, y_test)
+
+        # Create subplots
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+
+        # Plot 1: Accuracy distribution across all trees
+        all_accuracies = []
+        for class_id in self.classes:
+            all_accuracies.extend(
+                [tree["accuracy"] for tree in tree_accuracies[class_id]]
+            )
+
+        axes[0, 0].hist(all_accuracies, bins=20, alpha=0.7, edgecolor="black")
+        axes[0, 0].set_title("Distribution of Tree Accuracies")
+        axes[0, 0].set_xlabel("Accuracy")
+        axes[0, 0].set_ylabel("Number of Trees")
+        axes[0, 0].axvline(
+            np.mean(all_accuracies),
+            color="red",
+            linestyle="--",
+            label=f"Mean: {np.mean(all_accuracies):.3f}",
+        )
+        axes[0, 0].legend()
+
+        # Plot 2: Coverage distribution across all trees
+        all_coverages = []
+        for class_id in self.classes:
+            all_coverages.extend(
+                [tree["coverage"] for tree in tree_accuracies[class_id]]
+            )
+
+        axes[0, 1].hist(all_coverages, bins=20, alpha=0.7, edgecolor="black")
+        axes[0, 1].set_title("Distribution of Tree Coverages")
+        axes[0, 1].set_xlabel("Coverage")
+        axes[0, 1].set_ylabel("Number of Trees")
+        axes[0, 1].axvline(
+            np.mean(all_coverages),
+            color="red",
+            linestyle="--",
+            label=f"Mean: {np.mean(all_coverages):.3f}",
+        )
+        axes[0, 1].legend()
+
+        # Plot 3: Accuracy vs Coverage scatter plot
+        for class_id in self.classes:
+            accuracies = [tree["accuracy"] for tree in tree_accuracies[class_id]]
+            coverages = [tree["coverage"] for tree in tree_accuracies[class_id]]
+            axes[1, 0].scatter(
+                coverages, accuracies, alpha=0.6, label=f"Class {class_id}"
+            )
+
+        axes[1, 0].set_title("Accuracy vs Coverage")
+        axes[1, 0].set_xlabel("Coverage")
+        axes[1, 0].set_ylabel("Accuracy")
+        axes[1, 0].legend()
+        axes[1, 0].grid(True, alpha=0.3)
+
+        # Plot 4: Average accuracy per class
+        class_avg_accuracies = []
+        class_ids = []
+        for class_id in self.classes:
+            class_accuracies = [tree["accuracy"] for tree in tree_accuracies[class_id]]
+            class_avg_accuracies.append(np.mean(class_accuracies))
+            class_ids.append(class_id)
+
+        axes[1, 1].bar(class_ids, class_avg_accuracies, alpha=0.7)
+        axes[1, 1].set_title("Average Tree Accuracy per Class")
+        axes[1, 1].set_xlabel("Class ID")
+        axes[1, 1].set_ylabel("Average Accuracy")
+        axes[1, 1].set_ylim(0, 1)
+
+        plt.tight_layout()
+        plt.show()
+
+        return tree_accuracies
