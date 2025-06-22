@@ -88,7 +88,7 @@ def projection(logits_f, l, eta):
 
 
 # Training
-def train(model, X_train, l_train, eta, configs, X_val=None, y_val=None):
+def train(model, X_train, l_train, eta, optimizer, num_epochs, X_val=None, y_val=None):
     """Trains the model with the given configurations and data.
     model: the model to train
     X_train: training features
@@ -111,13 +111,10 @@ def train(model, X_train, l_train, eta, configs, X_val=None, y_val=None):
     if has_validation:
         X_val, y_val = X_val.to(device), y_val.to(device)
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=configs["lr"], weight_decay=configs["weight_decay"]
-    )
     model.train()
     best_val_loss = float("inf")
 
-    for epoch in range(configs["epochs"]):
+    for epoch in range(num_epochs):
         optimizer.zero_grad()
         logits_f = model(X_train)
         prob_q, dist_q_l, constraints_violation = projection(logits_f, l_train, eta)
@@ -128,7 +125,7 @@ def train(model, X_train, l_train, eta, configs, X_val=None, y_val=None):
         if has_validation:
             val_accuracy, val_loss = eval_model(model, X_val, y_val)
             print(
-                f'Epoch {epoch+1}/{configs["epochs"]}, Loss: {loss.item():.4f}, Constraints Violation: {constraints_violation.mean().item():.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation Loss: {val_loss:.4f}'
+                f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}, Constraints Violation: {constraints_violation.mean().item():.4f}, Validation Accuracy: {val_accuracy:.4f}, Validation Loss: {val_loss:.4f}"
             )
 
             if val_loss < best_val_loss:
@@ -136,7 +133,7 @@ def train(model, X_train, l_train, eta, configs, X_val=None, y_val=None):
                 best_model_state = copy.deepcopy(model.state_dict())
         else:
             print(
-                f'Epoch {epoch+1}/{configs["epochs"]}, Loss: {loss.item():.4f}',
+                f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}",
                 f"Constraints Violation: {constraints_violation.mean().item():.4f}",
             )
 
