@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -131,7 +133,7 @@ def train(model, X_train, l_train, eta, configs, X_val=None, y_val=None):
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                best_model_state = model.state_dict()
+                best_model_state = copy.deepcopy(model.state_dict())
         else:
             print(
                 f'Epoch {epoch+1}/{configs["epochs"]}, Loss: {loss.item():.4f}',
