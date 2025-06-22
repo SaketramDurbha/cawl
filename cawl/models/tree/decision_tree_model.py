@@ -125,14 +125,25 @@ class SmallDecisionTreesModel:
 
         print(f"Successfully trained {len(self.trees)} trees")
 
-    def predict_single_tree(self, X: np.ndarray, tree_idx: int) -> np.ndarray:
+    def predict_single_tree(
+        self, X: np.ndarray, tree_idx: int, threshold: int | None = None
+    ) -> np.ndarray:
         """Make prediction using a single tree."""
         tree = self.trees[tree_idx]
         feature_indices = self.feature_indices_per_tree[tree_idx]
         X_subset = X[:, feature_indices]
-        return tree.predict(X_subset)
 
-    def predict_ensemble(self, X: np.ndarray, method: str | None = None) -> np.ndarray:
+        if threshold is None:
+            return tree.predict(X_subset)
+
+        proba = tree.predict_proba(X_subset)
+        predict = proba.argmax(axis=1)
+        predict[proba.max(axis=1) < threshold] = -1
+        return predict
+
+    def predict_ensemble(
+        self, X: np.ndarray, method: str | None = None, threshold: int | None = None
+    ) -> np.ndarray:
         """
         Make ensemble predictions using all trees.
 
@@ -146,7 +157,7 @@ class SmallDecisionTreesModel:
         if method == "majority" or method is None:
             predictions = []
             for i in range(len(self.trees)):
-                pred = self.predict_single_tree(X, i)
+                pred = self.predict_single_tree(X, i, threshold)
                 predictions.append(pred)
 
             # Majority voting
