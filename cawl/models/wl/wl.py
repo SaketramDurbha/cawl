@@ -53,8 +53,10 @@ def projection(logits_f, l, eta):
             dim=-1,
             index=l[:, j][non_abstain_mask].reshape(-1, 1),
         )
+
+        EPS = 1e-5
         lambda_j = torch.log(
-            1 + max(0, 1 - eta[j] - z_j.mean()) / (z_j * (1 - z_j)).mean()
+            1 + EPS + max(0, 1 - eta[j] - z_j.mean()) / (z_j * (1 - z_j)).mean()
         ).reshape(-1)
         lambdas.append(lambda_j)
     lambdas = torch.stack(lambdas, dim=-1)

@@ -93,8 +93,8 @@ class PerClassDecisionTreeModel:
 
             # Calculate how many samples to take from each class
             # Ensure at least 20% from each class to maintain balance
-            min_target_samples = max(1, int(n_samples * 0.2))
-            min_other_samples = max(1, int(n_samples * 0.2))
+            min_target_samples = max(1, int(n_samples * 0.4))
+            min_other_samples = max(1, int(n_samples * 0.4))
 
             # Sample from target class
             target_samples = np.random.choice(
@@ -222,7 +222,7 @@ class PerClassDecisionTreeModel:
             for i in range(self.n_trees_per_class):
                 # Resample with replacement
                 resampled_indices = self._resample_with_replacement(
-                    n_train_samples, target_class=class_id
+                    int(0.50 * n_train_samples), target_class=class_id
                 )
                 # Map back to original indices
                 sample_indices = tree_train_indices[resampled_indices]
@@ -433,11 +433,17 @@ class PerClassDecisionTreeModel:
 
                 # Find samples where tree made a prediction (didn't abstain)
                 non_abstained_mask = predictions != -1
+                one_mask = predictions == 1
+
                 n_predictions = np.sum(non_abstained_mask)
                 n_abstained = np.sum(~non_abstained_mask)
 
+                total_num_one_predictions = np.sum(one_mask).item()
+                num_one_correct = np.sum(one_mask & (binary_labels == 1)).item()
+
                 if n_predictions > 0:
                     # Calculate accuracy for non-abstained predictions
+
                     tree_predictions = predictions[non_abstained_mask]
                     true_labels = binary_labels[non_abstained_mask]
 
@@ -459,6 +465,11 @@ class PerClassDecisionTreeModel:
                     "n_predictions": n_predictions,
                     "n_correct": n_correct,
                     "n_abstained": n_abstained,
+                    "precision": (
+                        num_one_correct / total_num_one_predictions
+                        if total_num_one_predictions > 0
+                        else 0
+                    ),
                 }
 
                 tree_accuracies[class_id].append(tree_result)
