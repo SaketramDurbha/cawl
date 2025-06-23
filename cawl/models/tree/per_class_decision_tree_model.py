@@ -150,40 +150,6 @@ class PerClassDecisionTreeModel:
         X_resampled = self.features[sample_indices][:, feature_indices]
         y_resampled = self._create_one_vs_rest_labels(target_class)[sample_indices]
 
-        # Check if we have samples from both classes
-        unique_classes = np.unique(y_resampled)
-        if len(unique_classes) < 2:
-            # If we don't have both classes, we need to ensure we have at least one sample from each
-            # This can happen when resampling doesn't include any samples from the target class
-            # Find indices of target class samples in the original dataset
-            target_class_indices = np.where(self.labels == target_class)[0]
-            other_class_indices = np.where(self.labels != target_class)[0]
-
-            # Ensure we have at least one sample from each class
-            min_samples_per_class = 1
-            target_samples_needed = min(
-                min_samples_per_class, len(target_class_indices)
-            )
-            other_samples_needed = min(min_samples_per_class, len(other_class_indices))
-
-            # Sample from target class
-            target_samples = np.random.choice(
-                target_class_indices, size=target_samples_needed, replace=True
-            )
-            # Sample from other classes
-            other_samples = np.random.choice(
-                other_class_indices, size=other_samples_needed, replace=True
-            )
-
-            # Combine samples
-            balanced_indices = np.concatenate([target_samples, other_samples])
-
-            # Update the resampled data
-            X_resampled = self.features[balanced_indices][:, feature_indices]
-            y_resampled = self._create_one_vs_rest_labels(target_class)[
-                balanced_indices
-            ]
-
         # Train decision tree
         tree = DecisionTreeClassifier(
             max_depth=self.max_depth, random_state=self.random_state, criterion="gini"
@@ -192,7 +158,7 @@ class PerClassDecisionTreeModel:
 
         return tree
 
-    def train_all_trees(self, tree_train_indices: Optional[np.ndarray] = None) -> None:
+    def train_all_trees(self) -> None:
         """
         Train multiple decision trees for each class using one-vs-rest approach.
 
@@ -200,10 +166,9 @@ class PerClassDecisionTreeModel:
             tree_train_indices: Optional array of indices to use for training.
                               If None, uses all available data.
         """
-        if tree_train_indices is None:
-            tree_train_indices = np.arange(len(self.features))
-
+        tree_train_indices = np.arange(len(self.features))
         n_train_samples = len(tree_train_indices)
+
         print(
             f"Training {self.n_trees_per_class} trees for each of {self.n_classes} classes..."
         )
@@ -222,7 +187,7 @@ class PerClassDecisionTreeModel:
             for i in range(self.n_trees_per_class):
                 # Resample with replacement
                 resampled_indices = self._resample_with_replacement(
-                    int(0.50 * n_train_samples), target_class=class_id
+                    n_train_samples, target_class=class_id
                 )
                 # Map back to original indices
                 sample_indices = tree_train_indices[resampled_indices]
