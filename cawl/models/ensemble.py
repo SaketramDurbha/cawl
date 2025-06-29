@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from sklearn.metrics import accuracy_score
 
 from cawl.models.tree.per_class_decision_tree_model import PerClassDecisionTreeModel
-from cawl.models.wl.wl import MLP, train
+from cawl.models.wl.wl import MLP
 
 
 class EnsembleModel:
